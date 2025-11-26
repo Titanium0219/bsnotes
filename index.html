@@ -1,0 +1,959 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Kavi sharma</title>
+  <link rel="manifest" href="manifest.json">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(() => console.log('Service Worker Registered'));
+  }
+    </script>
+
+<style>
+  :root{
+    --accent:#2563eb;
+    --card:#ffffff;
+    --text:#111;
+    --muted:#666;
+  }
+  [data-theme="dark"]{
+    --card:#07121a;
+    --muted:#9aa8b6;
+    --accent:#60a5fa;
+  }
+
+  html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:var(--card);color:var(--text);-webkit-font-smoothing:antialiased}
+  body{overflow:hidden;display:flex;flex-direction:column}
+
+  /* fullscreen wallpaper */
+  #bg{
+    position:fixed; inset:0; z-index:0;
+    background-size:cover; background-position:center; background-repeat:no-repeat;
+    transition:opacity .28s ease, filter .28s ease;
+  }
+
+  /* dimmer when menu open */
+  #dimmer{position:fixed;inset:0;background:rgba(0,0,0,0);z-index:4;pointer-events:none;transition:background .18s ease}
+
+  .app{
+    position:relative; z-index:2; height:100vh; display:flex; justify-content:center; padding:12px; box-sizing:border-box;
+  }
+
+  .shell {
+    width:100%; max-width:900px; height:100%; display:flex; flex-direction:column; gap:8px; box-sizing:border-box;
+  }
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:6px 4px}
+     /* ✅ App Title Logo Design */
+.appTitle {
+  flex: 1;
+  text-align: center;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  user-select: none;
+}
+
+.appTitle .appName {
+  font-size: 18px;
+}
+  .hamb{width:44px;height:40px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:20px}
+  .userLabel{font-size:13px;color:var(--muted);min-width:150px;text-align:right}
+
+  .mainArea{flex:1; display:flex; flex-direction:column; gap:8px; overflow:hidden}
+
+  /* write area container (resizable) */
+  #writeWrap{
+    position:relative; width:100%; border-radius:12px; overflow:hidden;
+    transition:height .18s ease; box-sizing:border-box;
+    background: transparent;
+  }
+
+  /* overlay image fits behind editor */
+  .overlay-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .18s ease;z-index:0;pointer-events:none}
+  .overlay-img.show{opacity:var(--overlay-opacity,1)}
+
+  /* editor (contenteditable) */
+  #editor{
+    position:relative; z-index:1;
+    width:100%; height:100%; box-sizing:border-box; padding:14px;
+    font-size:16px; line-height:1.5; outline:none; border:none; resize:none;
+    background: rgba(255,255,255,0.85); color:var(--text);
+    overflow:auto;
+  }
+  [data-theme="dark"] #editor{ background: rgba(0,0,0,0.35); color:var(--text); }
+
+  /* resize handle */
+  .resize-handle{Height:18px;display:flex;align-items:center;justify-content:center;cursor:ns-resize}
+  .resize-bar{width:36px;height:4px;border-radius:6px;background:rgba(0,0,0,0.14)}
+  [data-theme="dark"] .resize-bar{background:rgba(255,255,255,0.12)}
+
+  /* controls row (Saved left, Save right) */
+  .controls{display:flex;align-items:center;gap:8px;padding:4px;justify-content:space-between}
+  .btn{padding:10px 12px;border-radius:999px;border:none;background:var(--accent);color:#fff;font-weight:600}
+  #showSaved{background:#64748b}
+  #saveNote{background:#10b981}
+
+  /* NOTES: list area must be readable */
+  .notesList{
+    flex:1; overflow:auto; border-radius:12px; padding:12px; box-sizing:border-box;
+    background: rgba(255,255,255,0); /* semi-transparent white for readability */
+    margin:0 8px 8px 8px;
+  }
+  .note{
+    background:#fff;border-radius:10px;padding:10px;margin-bottom:10px;
+    box-shadow:0 2px 8px rgba(0,0,0,0.08);
+    color:#000;
+  }
+  .note small{display:block;color:#444;margin-bottom:6px;font-size:12px}
+
+  .no-notes{
+    text-align:center;margin-top:10px;background:rgba(255,255,255,0.95);padding:10px;border-radius:10px;
+    box-shadow:0 2px 6px rgba(0,0,0,0.08);color:#222;font-weight:600;
+  }
+
+  /* sidemenu (left) - scrollable */
+  #sidemenu{position:fixed;left:0;top:0;height:100%;width:78%;max-width:380px;background:var(--card);box-shadow:8px 0 32px rgba(0,0,0,0.12);transform:translateX(-120%);transition:transform .28s ease;z-index:6;padding:18px;box-sizing:border-box;overflow-y:auto}
+  #sidemenu.open{transform:translateX(0)}
+
+  .upload-preview img{width:100%;border-radius:8px;margin-top:8px}
+  .small{font-size:13px;color:var(--muted)}
+
+  @media(min-width:900px){
+    .shell{max-width:1100px}
+  }
+</style>
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="dimmer"></div>
+
+  <!-- Side Menu -->
+  <div id="sidemenu" aria-hidden="true">
+    <h3>Settings</h3>
+
+    <div class="small" style="margin-top:8px">Theme</div>
+    <button id="themeToggle" class="btn" style="width:100%;margin-top:8px">Light / Dark</button>
+
+    <div style="margin-top:14px" class="small">Notes Background</div>
+   <input id="bgFileNotes" type="file" accept="image/*" style="display:block;margin-top:8px"/>
+<div id="previewNotes" class="upload-preview"></div>
+<div style="display:flex; gap:8px; margin-top:8px;">
+  <button id="uploadNotesBtn" class="btn" style="flex:1">Upload & Apply</button>
+  <button id="removeNotesBtn" class="btn" style="flex:1; background:#ef4444">Remove</button>
+</div>
+    <div style="margin-top:14px" class="small">shows while typing</div>
+   <input id="bgFileOverlay" type="file" accept="image/*" style="display:block;margin-top:8px"/>
+<div id="previewOverlay" class="upload-preview"></div>
+<div style="display:flex; gap:8px; margin-top:8px;">
+  <button id="uploadOverlayBtn" class="btn" style="flex:1">Upload & Save</button>
+  <button id="removeOverlayBtn" class="btn" style="flex:1; background:#ef4444">Remove</button>
+</div>
+    <div style="margin-top:14px" class="small">Editor Height (%)</div>
+    <input id="heightRange" type="range" min="25" max="70" step="1" value="45" style="width:100%; margin-top:8px"/>
+
+    <div style="margin-top:14px" class="small">Editor Opacity</div>
+    <input id="opacityRange" type="range" min="20" max="100" step="1" value="70" style="width:100%; margin-top:8px"/>
+
+    <div style="flex:1"></div>
+    <div style="margin-top:8px">
+      <button id="menuLogout" class="btn" style="background:#ef4444;width:100%">Logout</button>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div class="app">
+    <div class="shell">
+      <div class="topbar">
+  <!-- Left Hamburger -->
+  <button id="hamb" class="hamb">☰</button>
+
+  <!-- Center Logo and App Name -->
+  <div class="appTitle">
+    📝 <span class="appName">BS Notes</span>
+  </div>
+
+  <!-- Right User Email -->
+  <div id="userLabel" class="userLabel small"></div>
+</div>
+
+      <div class="mainArea">
+        <!-- Login area (hidden when logged in) -->
+        <div id="loginCard" style="display:flex;align-items:center;gap:10px">
+          <div style="width:100%;max-width:420px;padding:18px;border-radius:12px;background:rgba(255,255,255,0.95);box-shadow:0 6px 18px rgba(0,0,0,0.08)">
+            <h2 style="margin:0 0 8px 0">Kavi sharma</h2>
+            <input id="email" type="email" placeholder="Email" style="width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid #ddd"/>
+            <input id="password" type="password" placeholder="Password" style="width:100%;padding:10px;margin-bottom:8px;border-radius:8px;border:1px solid #ddd"/>
+            <div style="display:flex;gap:8px">
+              <button id="loginBtn" class="btn" style="flex:1">Login</button>
+            </div>
+
+            <!-- Google Sign-in button -->
+            <div style="margin-top:10px">
+              <button id="googleLoginBtn" class="btn" style="width:100%; background:#ffffff; color:#111; border:1px solid #ddd; display:flex; align-items:center; justify-content:center; gap:8px;">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="g" style="width:18px;height:18px">
+                Continue with Google
+              </button>
+            </div>
+
+            <p id="loginMsg" class="small" style="margin-top:8px;color:#c53030">Welcome to BS notes by Biki sharma</p>
+          <p class="small" style="font-size:19px;margin-top:6px">आफ्नो कथा आफैं लेख</p>
+          </div>
+        </div>
+
+        <!-- App view -->
+        <div id="appView" style="display:none;flex-direction:column;height:100%;gap:8px">
+          <!-- Editor wrap at top -->
+          <div id="writeWrap" style="height:45%;">
+            <img id="overlayImg" class="overlay-img" src="" alt="">
+            <div id="editor" contenteditable="true" spellcheck="true" aria-label="note editor" placeholder="Write a new note..."></div>
+            <div class="resize-handle" id="resizeHandle"><div class="resize-bar"></div></div>
+          </div>
+
+          <!-- controls: Saved left, Save right -->
+          <div class="controls">
+            <button id="showSaved" class="btn">Saved</button>
+            <div style="display:flex;gap:8px">
+              <button id="saveNote" class="btn">Save</button>
+            </div>
+          </div>
+          <div id="toolbox"
+     style="
+       position:absolute;
+       display:none;
+       background:white;
+       padding:12px;
+       border-radius:12px;
+       box-shadow:0 4px 14px rgba(0,0,0,0.25);
+       z-index:99999;
+       min-width:160px;
+       ">
+  
+  <!-- Close Button (top-right) -->
+  <div style="display:flex; justify-content:flex-end;">
+    <button id="closeToolbox"
+      style="border:none;background:none;font-size:18px;cursor:pointer;">✖</button>
+  </div>
+
+  <!-- Options -->
+  <button id="addImageBtn"
+    style="width:100%;margin-top:6px;padding:10px;border-radius:8px;border:none;background:#2563eb;color:white;">
+    📷 Add Image
+  </button>
+
+  <button id="addAudioBtn"
+    style="width:100%;margin-top:6px;padding:10px;border-radius:8px;border:none;background:#10b981;color:white;">
+    🎤 Record Audio
+  </button>
+
+</div>
+
+
+<input type="file" id="imagePicker" accept="image/*" style="display:none;">
+<div id="emojiPanel" style="display:none; position:absolute; background:white; padding:10px;
+      border-radius:10px; box-shadow:0 3px 12px rgba(0,0,0,0.2);">
+</div>
+<div id="audioRecorder" style="display:none; position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+     background:white; padding:15px; border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,0.2); z-index:99999;">
+  
+  <p id="recordStatus">Tap Start to Record</p>
+  <button id="startRecBtn" class="btn">Start</button>
+  <button id="stopRecBtn" class="btn" style="background:#ef4444">Stop</button>
+  <button id="cancelRecBtn" class="btn" style="background:#ddd; color:#111">Cancel</button>
+
+</div>
+
+        <!-- Search Bar (hidden by default) -->
+<div id="searchContainer" style="display:none; padding:8px 12px;">
+  <input id="searchInput" type="text" placeholder="Search notes..." 
+  style="width:90%; padding:10px; border-radius:8px; border:1px solid #ccc; font-size:15px;">
+</div>
+          <!-- notes list -->
+          <div class="notesList" id="notesList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+   
+  <!-- Firebase compat -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <script>
+  // ---------- CONFIG ----------
+  const firebaseConfig = {
+    apiKey: "AIzaSyDLYGq7n6M0uzxY1MLnBBVFuB8R4boifV8",
+    authDomain: "my-daily-note-ad97b.firebaseapp.com",
+    projectId: "my-daily-note-ad97b",
+    storageBucket: "my-daily-note-ad97b.appspot.com",
+    messagingSenderId: "718773219537",
+    appId: "1:718773219537:web:967547e0566f45e3d915f0"
+  };
+
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  // Cloudinary
+  const CLOUD_NAME = "doc4psuzj";
+  const UPLOAD_PRESET = "Bsbiki";
+ const CLOUDINARY_AUDIO_URL = `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`;
+
+
+  // ---------- UI refs ----------
+  const bgDiv = document.getElementById('bg');
+  const dimmer = document.getElementById('dimmer');
+  const sidemenu = document.getElementById('sidemenu');
+  const hamb = document.getElementById('hamb');
+  const loginCard = document.getElementById('loginCard');
+  const appView = document.getElementById('appView');
+  const emailIn = document.getElementById('email');
+  const passIn = document.getElementById('password');
+  const loginBtn = document.getElementById('loginBtn');
+  const loginMsg = document.getElementById('loginMsg');
+  const userLabel = document.getElementById('userLabel');
+  const writeWrap = document.getElementById('writeWrap');
+  const editor = document.getElementById('editor');
+  const overlayImg = document.getElementById('overlayImg');
+  const resizeHandle = document.getElementById('resizeHandle');
+  const saveNoteBtn = document.getElementById('saveNote');
+  const notesList = document.getElementById('notesList');
+  const showSavedBtn = document.getElementById('showSaved');
+  const heightRange = document.getElementById('heightRange');
+  const opacityRange = document.getElementById('opacityRange');
+
+  const bgFileNotes = document.getElementById('bgFileNotes');
+  const bgFileOverlay = document.getElementById('bgFileOverlay');
+ 
+  const uploadNotesBtn = document.getElementById('uploadNotesBtn');
+  const uploadOverlayBtn = document.getElementById('uploadOverlayBtn');
+  
+  const previewNotes = document.getElementById('previewNotes');
+  const previewOverlay = document.getElementById('previewOverlay');
+  const searchContainer = document.getElementById('searchContainer');
+  const searchInput = document.getElementById('searchInput');
+   const removeNotesBtn = document.getElementById('removeNotesBtn');
+   const removeOverlayBtn = document.getElementById('removeOverlayBtn');
+   const googleLoginBtn = document.getElementById('googleLoginBtn');
+
+ 
+  let allNotes = []; // this will hold all notes for searching
+  let currentUser = null;
+   let editingNoteId = null;
+  let unsub = null;
+  let showSaved = false;
+  
+  let selectedNotesFile = null;
+  let selectedOverlayFile = null;
+  let mediaRecorder;
+let audioChunks = [];
+
+  // helpers
+  function safeText(s){ return (s||'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function formatTs(ts){ if(!ts) return ''; const d = ts.toDate ? ts.toDate() : new Date(ts); return d.toLocaleString(); }
+  function openMenu(v){ if(v) sidemenu.classList.add('open'), dimmer.style.background='rgba(0,0,0,0.32)', dimmer.style.pointerEvents='auto'; else sidemenu.classList.remove('open'), dimmer.style.background='rgba(0,0,0,0)', dimmer.style.pointerEvents='none'; }
+
+  // hamburger open only when logged in
+  hamb.addEventListener('click', () => { if(currentUser) openMenu(true); else alert('Login first to access settings'); });
+
+  // close menu on outside click
+  document.addEventListener('click', (e) => {
+    if(!sidemenu.classList.contains('open')) return;
+    if(sidemenu.contains(e.target) || hamb.contains(e.target)) return;
+    openMenu(false);
+  });
+  // ---------- auth ----------
+  window.login = async function() {
+    try {
+      loginMsg.textContent = "Signing in...";
+      await auth.signInWithEmailAndPassword(emailIn.value.trim(), passIn.value);
+      loginMsg.textContent = "";
+    } catch (err) {
+      if(err && err.code === 'auth/user-not-found') loginMsg.textContent = "User not found — add in Firebase Auth console.";
+      else if(err && err.code === 'auth/wrong-password') loginMsg.textContent = "Wrong password.";
+      else loginMsg.textContent = err && err.message ? err.message : 'Login failed';
+      console.error('Login error', err);
+      throw err;
+    }
+  };
+  loginBtn.addEventListener('click', ()=> window.login());
+
+  // ---------- Google Sign-in ----------
+  window.googleLogin = async function() {
+    try {
+      loginMsg.textContent = "Signing in with Google...";
+      const provider = new firebase.auth.GoogleAuthProvider();
+      // optional: request additional scopes
+      // provider.addScope('profile'); provider.addScope('email');
+      await auth.signInWithPopup(provider);
+      loginMsg.textContent = "";
+    } catch (err) {
+      console.error('Google login error', err);
+      if(err && err.message) loginMsg.textContent = err.message;
+      else loginMsg.textContent = 'Google sign-in failed';
+      // if using popups blocked you could implement redirect fallback:
+      // await auth.signInWithRedirect(provider);
+    }
+  };
+  googleLoginBtn.addEventListener('click', () => window.googleLogin());
+
+  auth.onAuthStateChanged(async user => {
+    if(user) {
+      currentUser = user;
+      userLabel.textContent = user.email;
+      loginCard.style.display = 'none';
+      appView.style.display = 'flex';
+      showSaved = false; showSavedBtn.textContent = 'Saved';
+      // load user prefs (bg, overlay, editor height & opacity)
+      try {
+        const udocRef = db.collection('users').doc(user.uid);
+        const udoc = await udocRef.get();
+        if(udoc.exists) {
+          const data = udoc.data();
+          if(data && data.bgNotesUrl) bgDiv.style.backgroundImage = 'url(' + data.bgNotesUrl + ')';
+          if(data && data.overlayUrl) { overlayImg.src = data.overlayUrl; previewOverlay.innerHTML = '<img src="' + data.overlayUrl + '" style="width:100%;border-radius:8px"/>'; }
+          const h = data && data.editorHeightPct ? Number(data.editorHeightPct) : 45;
+          writeWrap.style.height = h + '%';
+          heightRange.value = h;
+          const op = data && data.editorOpacityPct ? Number(data.editorOpacityPct) : 70;
+          opacityRange.value = op;
+          editor.style.background = 'rgba(255,255,255,' + (op/100) + ')';
+          if(data && data.theme === 'dark') document.documentElement.setAttribute('data-theme','dark');
+          else document.documentElement.removeAttribute('data-theme');
+        } else {
+          // defaults
+          writeWrap.style.height = '45%';
+          editor.style.background = 'rgba(255,255,255,0.7)';
+        }
+      } catch(e){ console.warn('read user prefs', e); }
+      startNotesListener();
+    } else {
+      currentUser = null;
+      loginCard.style.display = 'flex';
+      appView.style.display = 'none';
+      bgDiv.style.backgroundImage = '';
+      overlayImg.src = '';
+      document.documentElement.removeAttribute('data-theme');
+      if(unsub){ unsub(); unsub = null; }
+    }
+  });
+
+  // ---------- notes listener ----------
+  function startNotesListener() {
+  if (!currentUser) return;
+  if (unsub) { unsub(); unsub = null; }
+
+  let q;
+
+  if (showSaved) {
+    // SAVED NOTES
+    q = db.collection('notes')
+        .where('uid','==', currentUser.uid)
+        .where('archived','==', true)
+        .orderBy('pinned','desc')
+        .orderBy('createdAt','desc');
+  } else {
+    // ACTIVE NOTES (old notes have archived = undefined)
+    q = db.collection('notes')
+        .where('uid','==', currentUser.uid)
+        .where('archived','in', [false, null])
+        .orderBy('pinned','desc')
+        .orderBy('createdAt','desc');
+  }
+
+  unsub = q.onSnapshot(snap => {
+    const arr = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderNotes(arr);
+  }, err => { console.error('notes snapshot error', err); });
+}
+
+  // ---------- updated renderer (preserve actions) ----------
+  function renderNotes(arr) {
+  allNotes = arr;
+  notesList.innerHTML = '';
+
+  if (!arr || arr.length === 0) {
+    notesList.innerHTML = '<div class="no-notes">No notes yet</div>';
+    return;
+  }
+
+  arr.forEach(n => {
+    const d = document.createElement('div');
+    d.className = 'note';
+
+    const fullText = (n.text || "").replace(/`/g, "\\`");
+
+    d.innerHTML = `
+      <small>${n.createdAt?.toDate().toLocaleString() || ''}</small>
+
+      <div class="note-content">${n.text || ''}</div>
+
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        ${showSaved
+          ? `<button class="btn" style="background:#2563eb" onclick="restoreNote('${n.id}')">Restore</button>`
+          : `<button class="btn" style="background:#2563eb" onclick="archiveNote('${n.id}')">Save</button>`}
+
+        <button class="btn" style="background:#10b981" onclick="editNote('${n.id}', \`${fullText}\`)">Edit</button>
+        <button class="btn" style="background:#ef4444" onclick="deleteNote('${n.id}')">Delete</button>
+
+        ${n.pinned
+          ? `<button class="btn" style="background:#fbbf24" onclick="unpinNote('${n.id}')">Unpin</button>`
+          : `<button class="btn" style="background:#fbbf24" onclick="pinNote('${n.id}')">Pin</button>`}
+      </div>
+    `;
+
+    notesList.appendChild(d);
+  });
+}
+
+
+
+  async function deleteNote(id) { await db.collection('notes').doc(id).delete(); }
+  async function archiveNote(id) { await db.collection('notes').doc(id).update({ archived:true }); }
+  async function restoreNote(id) { await db.collection('notes').doc(id).update({ archived:false }); }
+   window.pinNote = async function(id){
+  await db.collection('notes').doc(id).update({ pinned: true });
+};
+
+window.unpinNote = async function(id){
+  await db.collection('notes').doc(id).update({ pinned: false });
+};
+
+     //-----Search bar----
+
+      searchInput.addEventListener('input', () => {
+  const searchTerm = searchInput.value.toLowerCase();
+  const filteredNotes = allNotes.filter(n => 
+    (n.text || '').toLowerCase().includes(searchTerm)
+  );
+  renderNotes(filteredNotes);
+});
+    const noteArea = document.getElementById("editor");
+
+const toolbox = document.getElementById("toolbox");
+const closeToolbox = document.getElementById("closeToolbox");
+
+let longPressTimer;
+
+// Long press to open
+editor.addEventListener("touchstart", (e) => {
+  longPressTimer = setTimeout(() => {
+    const x = e.touches[0].clientX;
+    const y = e.touches[0].clientY;
+
+    toolbox.style.left = (x - 20) + "px";
+    toolbox.style.top = (y - 30 + window.scrollY) + "px";
+    toolbox.style.display = "block";
+  }, 500);
+});
+
+editor.addEventListener("touchend", () => {
+  clearTimeout(longPressTimer);
+});
+
+// Close button
+closeToolbox.onclick = () => {
+  toolbox.style.display = "none";
+};
+
+// Auto-close on image select
+document.getElementById("addImageBtn").onclick = () => {
+  document.getElementById("imagePicker").click();
+  toolbox.style.display = "none";
+};
+
+// Auto-close on audio panel open
+document.getElementById("addAudioBtn").onclick = () => {
+  document.getElementById("audioRecorder").style.display = "block";
+  toolbox.style.display = "none";
+};
+
+
+document.getElementById("startRecBtn").onclick = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+
+  audioChunks = [];
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+
+  mediaRecorder.start();
+  recordStatus.textContent = "Recording...";
+};
+
+document.getElementById("stopRecBtn").onclick = async () => {
+  mediaRecorder.stop();
+
+  mediaRecorder.onstop = async () => {
+    recordStatus.textContent = "Uploading...";
+
+    const audioBlob = new Blob(audioChunks, { type: "audio/mp3" });
+
+    const fd = new FormData();
+    fd.append("file", audioBlob);
+    fd.append("upload_preset", "Bsbiki");
+
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/raw/upload`, {
+      method: "POST",
+      body: fd
+    });
+
+    const data = await res.json();
+
+   editor.innerHTML += `
+  <div class="mediaBox" style="position:relative; display:block; margin:8px 0;">
+      <span class="removeMedia"
+        style="
+          position:absolute;
+          top:-6px;
+          right:-6px;
+          background:#ff4444;
+          color:white;
+          width:22px;
+          height:22px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border-radius:50%;
+          font-size:14px;
+          cursor:pointer;
+        "
+        onclick="this.parentElement.remove()"
+      >✖</span>
+
+      <audio controls src="${data.secure_url}" style="width:100%;"></audio>
+  </div>
+`;
+
+    
+    document.getElementById("audioRecorder").style.display = "none";
+  };
+};
+
+document.getElementById("cancelRecBtn").onclick = () => {
+  document.getElementById("audioRecorder").style.display = "none";
+};
+
+let pressTimer;
+
+noteArea.addEventListener("touchstart", (e) => {
+    pressTimer = setTimeout(() => {
+        const x = e.touches[0].clientX;
+        const y = e.touches[0].clientY;
+
+        menu.style.left = (x - 20) + "px";
+        menu.style.top = (y - 40 + window.scrollY) + "px";
+        menu.style.display = "block";
+    }, 500);
+});
+
+noteArea.addEventListener("touchend", () => {
+    clearTimeout(pressTimer);
+});
+
+      // ---------- Edit Note Function ----------
+window.editNote = function(id, text) {
+  editingNoteId = id;         // Set the ID of the note being edited
+  editor.innerText = text;    // Load note content into editor
+  overlayImg.classList.add('show'); // Show overlay if enabled
+  
+};
+  // ---------- save note ----------
+ saveNoteBtn.addEventListener('click', async () => {
+  if (!currentUser) return alert('Login first');
+  const t = editor.innerText.trim();
+  if (!t) return alert('Note is empty');
+
+  if (editingNoteId) {
+    // update existing note
+    await db.collection('notes').doc(editingNoteId).update({
+      text: t,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    
+  } else {
+    // create new note
+   await db.collection('notes').add({
+      uid: currentUser.uid,
+      text: t,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      archived: false,
+      pinned: false
+});
+
+    
+  }
+
+  // Reset editor
+  editingNoteId = null;
+  editor.innerText = '';
+  overlayImg.classList.remove('show');
+
+  // Refresh notes list
+  startNotesListener();
+
+  // Hide search bar if not in saved mode
+  if (!showSaved) {
+    searchContainer.style.display = 'none';
+  }
+});
+
+  showSavedBtn.addEventListener('click', () => {
+  showSaved = !showSaved;
+  showSavedBtn.textContent = showSaved ? 'Active' : 'Saved'; 
+  startNotesListener();
+
+  // Show search bar only when saved notes are active
+  if (showSaved) {
+    searchContainer.style.display = 'block';
+  } else {
+    searchContainer.style.display = 'none';
+    searchInput.value = '';
+  }
+});
+
+  // ---------- theme ----------
+  themeToggle.addEventListener('click', async () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? '' : 'dark';
+    if(next) document.documentElement.setAttribute('data-theme','dark'); else document.documentElement.removeAttribute('data-theme');
+    if(currentUser) await db.collection('users').doc(currentUser.uid).set({ theme: next || 'light' }, { merge:true });
+  });
+    document.getElementById("addImageBtn").onclick = () => {
+    document.getElementById("imagePicker").click();
+};
+
+document.getElementById("imagePicker").addEventListener("change", async function() {
+    const file = this.files[0];
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("upload_preset", "Bsbiki");
+
+
+    const res = await fetch("https://api.cloudinary.com/v1_1/doc4psuzj/image/upload", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    editor.innerHTML += `
+  <div class="mediaBox" style="position:relative; display:inline-block;">
+      <span class="removeMedia"
+        style="
+          position:absolute;
+          top:-6px;
+          right:-6px;
+          background:#ff4444;
+          color:white;
+          width:22px;
+          height:22px;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          border-radius:50%;
+          font-size:14px;
+          cursor:pointer;
+        "
+        onclick="this.parentElement.remove()"
+      >✖</span>
+
+      <img src="${data.secure_url}"
+        style="max-width:100%; border-radius:8px; margin:6px 0;">
+  </div><br>
+`;
+
+
+    menu.style.display = "none";
+});
+
+  // ---------- Cloudinary upload handlers ----------
+  
+  bgFileNotes.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    selectedNotesFile = f; previewNotes.innerHTML = '<img src="' + URL.createObjectURL(f) + '" style="width:100%;border-radius:8px"/>';
+  });
+  bgFileOverlay.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    selectedOverlayFile = f; previewOverlay.innerHTML = '<img src="' + URL.createObjectURL(f) + '" style="width:100%;border-radius:8px"/>';
+  });
+
+  uploadNotesBtn.addEventListener('click', async () => {
+    if(!currentUser) return alert('Login first'); if(!selectedNotesFile) return alert('Choose an image first');
+    uploadNotesBtn.textContent = 'Uploading...';
+    try {
+      const url = await uploadToCloudinary(selectedNotesFile);
+      await db.collection('users').doc(currentUser.uid).set({ bgNotesUrl: url }, { merge:true });
+      bgDiv.style.backgroundImage = 'url(' + url + ')';
+      previewNotes.innerHTML = ''; // hide preview
+selectedNotesFile = null;
+bgFileNotes.value = ''; // reset file input uploadNotesBtn.textContent = 'Upload & Apply (Notes)';
+    } catch(err) { console.error(err); alert('Upload failed: ' + (err.message || err)); uploadNotesBtn.textContent = 'Upload & Apply (Notes)'; }
+  });
+
+  uploadOverlayBtn.addEventListener('click', async () => {
+    if(!currentUser) return alert('Login first'); if(!selectedOverlayFile) return alert('Choose an image first');
+    uploadOverlayBtn.textContent = 'Uploading...';
+    try {
+      const url = await uploadToCloudinary(selectedOverlayFile);
+      await db.collection('users').doc(currentUser.uid).set({ overlayUrl: url }, { merge:true });
+      overlayImg.src = url;
+    previewNotes.innerHTML = ''; // hide preview
+selectedNotesFile = null;
+bgFileNotes.value = ''; // reset file input uploadOverlayBtn.textContent = 'Upload & Save (Overlay)';
+    } catch(err) { console.error(err); alert('Upload failed: ' + (err.message || err)); uploadOverlayBtn.textContent = 'Upload & Save (Overlay)'; }
+  });
+
+  async function uploadToCloudinary(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    fd.append('upload_preset', UPLOAD_PRESET);
+    const res = await fetch(CLOUDINARY_URL, { method: 'POST', body: fd });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error.message || 'Upload error');
+    return data.secure_url;
+  }
+    
+      // ---------- Remove Notes Background ----------
+removeNotesBtn.addEventListener('click', async () => {
+  if (!currentUser) return alert('Login first');
+
+  await db.collection('users').doc(currentUser.uid).set({ bgNotesUrl: "" }, { merge: true });
+  bgDiv.style.backgroundImage = '';
+  previewNotes.innerHTML = '';
+ 
+});
+
+// ---------- Remove Overlay Background ----------
+removeOverlayBtn.addEventListener('click', async () => {
+  if (!currentUser) return alert('Login first');
+
+  await db.collection('users').doc(currentUser.uid).set({ overlayUrl: "" }, { merge: true });
+  overlayImg.src = '';
+  previewOverlay.innerHTML = '';
+  
+});
+
+  // ---------- overlay behaviour: show only while typing/focus ----------
+  editor.addEventListener('focus', () => {
+    if(overlayImg && overlayImg.src) overlayImg.classList.add('show');
+    // hide background (fade) so overlay stands out
+    bgDiv.style.opacity = '0.12';
+  });
+  editor.addEventListener('blur', () => {
+    overlayImg.classList.remove('show');
+    bgDiv.style.opacity = '1';
+  });
+
+  // ---------- responsive auto-grow behavior (WhatsApp-like) ----------
+  function deviceMaxPct(){
+    const w = window.innerWidth;
+    if(w < 600) return 42;
+    if(w < 1000) return 55;
+    return 60;
+  }
+
+  function adjustEditorHeightAuto(){
+    const container = writeWrap.parentElement; // shell height area
+    const containerH = container.getBoundingClientRect().height;
+    const maxPct = deviceMaxPct();
+    const maxPx = Math.round((maxPct/100) * containerH);
+    const contentH = editor.scrollHeight;
+    const desiredPx = Math.min(maxPx, Math.max(120, contentH + 28));
+    const pct = (desiredPx / containerH) * 100;
+    writeWrap.style.height = pct.toFixed(2) + '%';
+  }
+
+  let resizeTimer = null;
+  editor.addEventListener('input', ()=>{
+    if(resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>{ adjustEditorHeightAuto(); resizeTimer=null; }, 80);
+  });
+
+  // window resize adjust if current > max
+  window.addEventListener('resize', ()=>{
+    const containerH = writeWrap.parentElement.getBoundingClientRect().height;
+    const maxPx = Math.round((deviceMaxPct()/100) * containerH);
+    const currentPx = writeWrap.getBoundingClientRect().height;
+    if(currentPx > maxPx) writeWrap.style.height = (deviceMaxPct()) + '%';
+  });
+
+  // ---------- manual drag resize ----------
+  (function() {
+    let dragging = false, startY = 0, startH = 0;
+    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+    function onStart(e){
+      dragging = true;
+      startY = (e.touches ? e.touches[0].clientY : e.clientY);
+      startH = writeWrap.getBoundingClientRect().height;
+      document.body.style.userSelect = 'none';
+    }
+    function onMove(e){
+      if(!dragging) return;
+      const y = (e.touches ? e.touches[0].clientY : e.clientY);
+      const dy = startY - y;
+      const cardH = writeWrap.parentElement.getBoundingClientRect().height;
+      let newH = clamp(((startH + dy)/cardH)*100, 20, deviceMaxPct()); // percent 20- device max
+      writeWrap.style.height = newH + '%';
+      heightRange.value = Math.round(newH);
+    }
+    function onEnd(){
+      if(!dragging) return;
+      dragging = false;
+      document.body.style.userSelect = '';
+      if(currentUser) db.collection('users').doc(currentUser.uid).set({ editorHeightPct: Number(heightRange.value) }, { merge:true });
+    }
+    resizeHandle.addEventListener('touchstart', onStart, {passive:true});
+    resizeHandle.addEventListener('mousedown', onStart);
+    window.addEventListener('touchmove', onMove, {passive:false});
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchend', onEnd);
+    window.addEventListener('mouseup', onEnd);
+    heightRange.addEventListener('input', () => { writeWrap.style.height = heightRange.value + '%'; });
+    heightRange.addEventListener('change', () => { if(currentUser) db.collection('users').doc(currentUser.uid).set({ editorHeightPct: Number(heightRange.value) }, { merge:true }); });
+  })();
+
+  // ---------- opacity slider ----------
+  opacityRange.addEventListener('input', () => {
+    const v = Number(opacityRange.value);
+    editor.style.background = 'rgba(255,255,255,' + (v/100).toFixed(2) + ')';
+    overlayImg.style.setProperty('--overlay-opacity', (Math.min(0.95, v/100)).toString());
+  });
+  opacityRange.addEventListener('change', () => {
+    if(currentUser) db.collection('users').doc(currentUser.uid).set({ editorOpacityPct: Number(opacityRange.value) }, { merge:true });
+  });
+
+  // ---------- logout (archive first) ----------
+  document.getElementById('menuLogout').addEventListener('click', async ()=>{
+    if(!currentUser) return;
+    if(!confirm('Archive all active notes and logout?')) return;
+    try {
+      const q = db.collection('notes').where('uid','==',currentUser.uid).where('archived','==',false);
+      const snap = await q.get();
+      const ops = snap.docs.map(d => d.ref.update({ archived:true }));
+      await Promise.all(ops);
+      await auth.signOut();
+      openMenu(false);
+    } catch(err){ console.error('logout error', err); alert('Logout failed: ' + (err.message || err)); }
+  });
+
+  // dimmer click closes menu
+  dimmer.addEventListener('click', ()=> openMenu(false));
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape') openMenu(false); });
+
+  // ---------- helper: load notes on demand ----------
+  // startNotesListener defined above
+
+  // EOF
+  </script>
+</body>
+</html>
