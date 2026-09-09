@@ -326,6 +326,7 @@
 </head>
 
 <body>
+    <audio id="bgMusic" src="Audio/audio1.mp3" loop></audio>
 
     <div class="gallery">
 
@@ -559,7 +560,7 @@
 
             nextPhoto();
 
-        }, 1500);
+        }, 1700);
 
 
         /* Mouse wheel */
@@ -579,6 +580,39 @@
         });
 
     </script>
+    <script>
+const music = document.getElementById("bgMusic");
+
+music.volume = 0.1;
+
+music.play().then(() => {
+    let volume = 0.2;
+
+    const fadeIn = setInterval(() => {
+        volume += 0.03;
+        music.volume = volume;
+
+        if (volume >= 0.6) {
+            clearInterval(fadeIn);
+        }
+    }, 100);
+}).catch(() => {
+    document.addEventListener("click", () => {
+        music.play();
+
+        let volume = 0.3;
+
+        const fadeIn = setInterval(() => {
+            volume += 0.04;
+            music.volume = volume;
+
+            if (volume >= 1) {
+                clearInterval(fadeIn);
+            }
+        }, 100);
+    }, { once: true });
+});
+</script>
 
 </body>
 </html>
